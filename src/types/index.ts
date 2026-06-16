@@ -94,6 +94,17 @@ export interface Prescription {
     description: string;
     time: string;
   }[];
+  lastAdjustment?: {
+    previousWorkstationId?: string | null;
+    previousWorkstationName?: string;
+    previousPharmacistId?: string | null;
+    previousPharmacistName?: string;
+    previousScheduleTime?: string;
+    requestId: string;
+    approvedAt: string;
+    approvedBy: string;
+    reason: string;
+  };
 }
 
 export interface Workstation {

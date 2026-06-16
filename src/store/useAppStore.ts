@@ -78,6 +78,7 @@ interface AppState {
 
   addNotification: (type: 'info' | 'warning' | 'error' | 'success', message: string) => void;
   markNotificationRead: (id: string) => void;
+  setCurrentUserId: (id: string) => void;
 
   getDashboardStats: () => {
     totalOrders: number;
@@ -385,10 +386,27 @@ export const useAppStore = create<AppState>((set, get) => ({
               },
             ],
           };
+          if (approved) {
+            const reviewer = state.staff.find((s) => s.id === reviewerId);
+            updates.lastAdjustment = {
+              previousWorkstationId: p.workstationId,
+              previousWorkstationName: p.workstationName,
+              previousPharmacistId: p.assignedPharmacistId,
+              previousPharmacistName: p.assignedPharmacistName,
+              previousScheduleTime: p.scheduleTime,
+              requestId: request.id,
+              approvedAt: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+              approvedBy: reviewer?.name || reviewerId,
+              reason: request.reason,
+            };
+          }
           if (approved && request.proposedChanges.workstationId) {
             const ws = state.workstations.find((w) => w.id === request.proposedChanges.workstationId);
             updates.workstationId = request.proposedChanges.workstationId;
             updates.workstationName = ws?.name;
+            if (ws?.zoneType) {
+              updates.zoneType = ws.zoneType;
+            }
           }
           if (approved && request.proposedChanges.pharmacistId) {
             const st = state.staff.find((s) => s.id === request.proposedChanges.pharmacistId);
@@ -592,6 +610,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   markNotificationRead: (id) => set((state) => ({
     notifications: state.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
   })),
+
+  setCurrentUserId: (id) => set({ currentUserId: id }),
 
   getDashboardStats: () => {
     const state = get();

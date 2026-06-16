@@ -267,6 +267,25 @@ export const defaultSchedulingConfig: SchedulingConfig = {
   overtimeWarningThresholdMinutes: 30,
 };
 
+const determineZoneTypeByOrder = (order: DoctorOrder): 'antibiotic_zone' | 'chemo_zone' | 'nutrition_zone' | 'general_zone' => {
+  const drugIds = order.items.map((i) => i.drugId);
+  const categories = drugIds.map((id) => mockDrugs.find((d) => d.id === id)?.category || 'other');
+  if (categories.includes('chemotherapy')) return 'chemo_zone';
+  if (categories.includes('nutrition')) return 'nutrition_zone';
+  if (categories.includes('antibiotic')) return 'antibiotic_zone';
+  return 'general_zone';
+};
+
+const pickWorkstationByZone = (zone: 'antibiotic_zone' | 'chemo_zone' | 'nutrition_zone' | 'general_zone') => {
+  const pool = mockWorkstations.filter((w) => w.zoneType === zone && w.currentStatus !== 'maintenance');
+  return pool[0] || mockWorkstations[0];
+};
+
+const pickPharmacistByZone = (zone: 'antibiotic_zone' | 'chemo_zone' | 'nutrition_zone' | 'general_zone') => {
+  const pool = mockStaff.filter((s) => s.role === 'pharmacist_dispenser' && s.skills.includes(zone) && s.isOnDuty);
+  return pool[0] || mockStaff[2];
+};
+
 export const generatePrescriptionNo = () => {
   return 'CF' + now.format('YYYYMMDD') + String(Math.floor(Math.random() * 10000)).padStart(4, '0');
 };
@@ -277,27 +296,32 @@ export const generateBarcode = () => {
 
 export const generatePrescriptions = (): Prescription[] => {
   const approvedOrders = mockDoctorOrders.filter((o) => o.reviewStatus === 'approved');
-  return approvedOrders.map((order, idx) => ({
-    id: 'pr' + (idx + 1),
-    prescriptionNo: generatePrescriptionNo(),
-    orderId: order.id,
-    order: order,
-    patientId: order.patientId,
-    patient: order.patient,
-    items: order.items,
-    scheduleTime: now.add(idx * 30 + 30, 'minute').format('YYYY-MM-DD HH:mm:ss'),
-    expectedDuration: order.items.reduce((sum) => sum + defaultSchedulingConfig.estimatedMinutesPerDrugItem, 0),
-    zoneType: (idx % 2 === 0 ? 'antibiotic_zone' : idx % 3 === 0 ? 'chemo_zone' : 'nutrition_zone') as any,
-    workstationId: idx < 3 ? 'w001' : 'w003',
-    workstationName: idx < 3 ? '抗生素区-BSC-01' : '化疗区-BSC-01',
-    assignedPharmacistId: idx < 3 ? 's003' : 's004',
-    assignedPharmacistName: idx < 3 ? '张药师' : '刘药师',
-    status: (['pending_review', 'reviewed', 'dispensing'] as any)[idx],
-    statusHistory: [{ status: 'pending_review', time: order.orderTime, operator: '系统自动生成' }],
-    drugConflicts: [],
-    barcode: generateBarcode(),
-    errorRecord: [],
-  }));
+  return approvedOrders.map((order, idx) => {
+    const zoneType = determineZoneTypeByOrder(order);
+    const workstation = pickWorkstationByZone(zoneType);
+    const pharmacist = pickPharmacistByZone(zoneType);
+    return {
+      id: 'pr' + (idx + 1),
+      prescriptionNo: generatePrescriptionNo(),
+      orderId: order.id,
+      order: order,
+      patientId: order.patientId,
+      patient: order.patient,
+      items: order.items,
+      scheduleTime: now.add(idx * 30 + 30, 'minute').format('YYYY-MM-DD HH:mm:ss'),
+      expectedDuration: order.items.reduce((sum) => sum + defaultSchedulingConfig.estimatedMinutesPerDrugItem, 0),
+      zoneType,
+      workstationId: workstation.id,
+      workstationName: workstation.name,
+      assignedPharmacistId: pharmacist.id,
+      assignedPharmacistName: pharmacist.name,
+      status: (['pending_review', 'reviewed', 'dispensing'] as any)[idx],
+      statusHistory: [{ status: 'pending_review', time: order.orderTime, operator: '系统自动生成' }],
+      drugConflicts: [],
+      barcode: generateBarcode(),
+      errorRecord: [],
+    };
+  });
 };
 
 export const generateMaintenanceWorkOrders = (): MaintenanceWorkOrder[] => [

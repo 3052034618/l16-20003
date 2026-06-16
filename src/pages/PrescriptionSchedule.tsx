@@ -42,6 +42,7 @@ import {
   TeamOutlined,
   DesktopOutlined,
   RocketOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { useAppStore } from '../store/useAppStore';
 import { Prescription, PrescriptionStatus, Workstation, Staff } from '../types';
@@ -665,14 +666,42 @@ interface SchedulePreviewProps {
   onSelectPrescription: (p: Prescription) => void;
 }
 
+type RiskSeverity = 'high' | 'medium' | 'low';
+
+interface OrderRisk {
+  id: string;
+  title: string;
+  severity: RiskSeverity;
+  patientName: string;
+  prescriptions: Prescription[];
+  description: string;
+  suggestion: string;
+  ruleId?: string;
+}
+
 const SchedulePreview: React.FC<SchedulePreviewProps> = ({ prescriptions, workstations, staff, zoneMap, onSelectPrescription }) => {
+  const { infusionOrderRules } = useAppStore();
   const today = dayjs().format('YYYY-MM-DD');
   const todayPrescriptions = prescriptions.filter((p) => (p.scheduleTime || '').startsWith(today));
+  const [previewTab, setPreviewTab] = useState<'overview' | 'patient' | 'risk'>('overview');
+  const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
 
   const zones = (['antibiotic_zone', 'chemo_zone', 'nutrition_zone', 'general_zone'] as const).map((z) => ({
     key: z,
     ...zoneMap[z],
   }));
+
+  const categoryMeta: Record<string, { label: string; color: string }> = {
+    antibiotic: { label: '抗生素', color: '#1677ff' },
+    chemotherapy: { label: '化疗药', color: '#eb2f96' },
+    nutrition: { label: '营养液', color: '#52c41a' },
+    general: { label: '常规药', color: '#8c8c8c' },
+  };
+
+  const getCategory = (p: Prescription) =>
+    p.zoneType === 'antibiotic_zone' ? 'antibiotic' :
+    p.zoneType === 'chemo_zone' ? 'chemotherapy' :
+    p.zoneType === 'nutrition_zone' ? 'nutrition' : 'general';
 
   const prescriptionsByWorkstation: Record<string, Prescription[]> = {};
   todayPrescriptions.forEach((p) => {
@@ -696,65 +725,105 @@ const SchedulePreview: React.FC<SchedulePreviewProps> = ({ prescriptions, workst
     prescriptionsByStaff[sid].sort((a, b) => dayjs(a.scheduleTime).valueOf() - dayjs(b.scheduleTime).valueOf());
   });
 
-  const detectZoneOrderConflicts = (): Prescription[][] => {
-    const groups: Prescription[][] = [];
-    const byOrder: Record<string, Prescription[]> = {};
-    todayPrescriptions.forEach((p) => {
-      const oid = p.orderId || p.id;
-      if (!byOrder[oid]) byOrder[oid] = [];
-      byOrder[oid].push(p);
-    });
-    Object.values(byOrder).forEach((arr) => {
+  const prescriptionsByPatient: Record<string, Prescription[]> = {};
+  todayPrescriptions.forEach((p) => {
+    const pid = p.patientId || p.id;
+    if (!prescriptionsByPatient[pid]) prescriptionsByPatient[pid] = [];
+    prescriptionsByPatient[pid].push(p);
+  });
+  Object.keys(prescriptionsByPatient).forEach((pid) => {
+    prescriptionsByPatient[pid].sort((a, b) => dayjs(a.scheduleTime).valueOf() - dayjs(b.scheduleTime).valueOf());
+  });
+
+  const detectOrderRisks = (): OrderRisk[] => {
+    const risks: OrderRisk[] = [];
+    Object.entries(prescriptionsByPatient).forEach(([pid, arr]) => {
       if (arr.length < 2) return;
-      arr.sort((a, b) => dayjs(a.scheduleTime).valueOf() - dayjs(b.scheduleTime).valueOf());
-      const zones = arr.map((x) => x.zoneType);
-      const hasChemo = zones.includes('chemo_zone');
-      const hasNutrition = zones.includes('nutrition_zone');
-      const hasAntibiotic = zones.includes('antibiotic_zone');
-      if ((hasChemo || hasNutrition) && hasAntibiotic) {
-        const chemoIdx = zones.indexOf('chemo_zone');
-        const nutritionIdx = zones.indexOf('nutrition_zone');
-        const antiIdx = zones.indexOf('antibiotic_zone');
-        if ((chemoIdx >= 0 && chemoIdx < antiIdx) || (nutritionIdx >= 0 && nutritionIdx < antiIdx)) {
-          groups.push(arr);
+      const patient = arr[0].patient;
+      for (let i = 0; i < arr.length - 1; i++) {
+        for (let j = i + 1; j < arr.length; j++) {
+          const a = arr[i];
+          const b = arr[j];
+          const catA = getCategory(a);
+          const catB = getCategory(b);
+          if (catA === catB) continue;
+
+          const rule = infusionOrderRules.find((r) =>
+            (r.firstCategory === catA && r.followCategory === catB) ||
+            (r.firstCategory === catB && r.followCategory === catA)
+          );
+
+          if (rule) {
+            const correctOrder = rule.firstCategory === catA;
+            const timeA = dayjs(a.scheduleTime);
+            const timeB = dayjs(b.scheduleTime);
+            const actualFirst = timeA.isBefore(timeB) ? a : b;
+            const actualSecond = timeA.isBefore(timeB) ? b : a;
+            const actualFirstCat = getCategory(actualFirst);
+            const intervalMin = Math.abs(timeB.diff(timeA, 'minute'));
+
+            if (actualFirstCat !== rule.firstCategory) {
+              risks.push({
+                id: `risk_${pid}_${i}_${j}_order`,
+                title: `给药顺序错误：${categoryMeta[actualFirstCat].label} 应在 ${categoryMeta[rule.firstCategory].label} 之后`,
+                severity: 'high',
+                patientName: patient?.name || '未知患者',
+                prescriptions: [actualFirst, actualSecond],
+                description: `患者「${patient?.name}」的 ${categoryMeta[actualFirstCat].label}（${actualFirst.prescriptionNo}，${dayjs(actualFirst.scheduleTime).format('HH:mm')}）排在 ${categoryMeta[rule.firstCategory].label}（${actualSecond.prescriptionNo}，${dayjs(actualSecond.scheduleTime).format('HH:mm')}）之前，存在用药风险。`,
+                suggestion: rule.reason + '。建议调整顺序：先给 ' + categoryMeta[rule.firstCategory].label + '，间隔至少 ' + rule.minIntervalMinutes + ' 分钟后再给 ' + categoryMeta[rule.followCategory].label + '。',
+                ruleId: rule.id,
+              });
+            } else if (intervalMin < rule.minIntervalMinutes) {
+              risks.push({
+                id: `risk_${pid}_${i}_${j}_interval`,
+                title: `给药间隔不足：${categoryMeta[catA].label} 与 ${categoryMeta[catB].label} 仅间隔 ${intervalMin} 分钟`,
+                severity: intervalMin < rule.minIntervalMinutes / 2 ? 'high' : 'medium',
+                patientName: patient?.name || '未知患者',
+                prescriptions: [a, b],
+                description: `患者「${patient?.name}」的 ${categoryMeta[rule.firstCategory].label} 与 ${categoryMeta[rule.followCategory].label} 给药间隔仅 ${intervalMin} 分钟，低于要求的 ${rule.minIntervalMinutes} 分钟。`,
+                suggestion: '建议将后者的排程时间延后，保证至少 ' + rule.minIntervalMinutes + ' 分钟的间隔窗口。',
+                ruleId: rule.id,
+              });
+            }
+          }
         }
       }
     });
-    return groups;
+    return risks;
   };
 
-  const conflicts = detectZoneOrderConflicts();
+  const risks = detectOrderRisks();
+
+  const handleRiskClick = (risk: OrderRisk) => {
+    setHighlightIds(new Set(risk.prescriptions.map((p) => p.id)));
+    if (risk.prescriptions.length > 0) {
+      onSelectPrescription(risk.prescriptions[0]);
+    }
+    setPreviewTab('overview');
+    setTimeout(() => setHighlightIds(new Set()), 3000);
+  };
 
   const renderPrescriptionCard = (p: Prescription) => {
-    const category = p.zoneType === 'antibiotic_zone' ? 'antibiotic' : p.zoneType === 'chemo_zone' ? 'chemotherapy' : p.zoneType === 'nutrition_zone' ? 'nutrition' : 'general';
-    const colors: Record<string, string> = {
-      antibiotic: '#1677ff',
-      chemotherapy: '#eb2f96',
-      nutrition: '#52c41a',
-      general: '#8c8c8c',
-    };
-    const labels: Record<string, string> = {
-      antibiotic: '抗生素',
-      chemotherapy: '化疗药',
-      nutrition: '营养液',
-      general: '常规',
-    };
+    const category = getCategory(p);
+    const meta = categoryMeta[category];
+    const isHighlighted = highlightIds.has(p.id);
     return (
       <div
         key={p.id}
         onClick={() => onSelectPrescription(p)}
         style={{
-          borderLeft: `4px solid ${colors[category]}`,
+          borderLeft: `4px solid ${meta.color}`,
           padding: '8px 10px',
-          background: '#fff',
+          background: isHighlighted ? '#fffbe6' : '#fff',
           borderRadius: 6,
           marginBottom: 8,
           cursor: 'pointer',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          boxShadow: isHighlighted ? '0 0 0 2px #faad14' : '0 1px 3px rgba(0,0,0,0.06)',
+          transition: 'all 0.3s',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Tag color={colors[category]} style={{ margin: 0 }}>{labels[category]}</Tag>
+          <Tag color={meta.color} style={{ margin: 0 }}>{meta.label}</Tag>
           <span style={{ fontSize: 11, color: '#8c8c8c' }}>⏰ {dayjs(p.scheduleTime).format('HH:mm')} ~ {dayjs(p.scheduleTime).add(p.expectedDuration, 'minute').format('HH:mm')}</span>
         </div>
         <div style={{ fontWeight: 600, fontSize: 13, marginTop: 4 }}>{p.patient?.name}</div>
@@ -767,112 +836,298 @@ const SchedulePreview: React.FC<SchedulePreviewProps> = ({ prescriptions, workst
             配伍禁忌×{p.drugConflicts.length}
           </Tag>
         )}
+        {p.lastAdjustment && (
+          <Tag color="cyan" style={{ marginTop: 4 }}>已调整</Tag>
+        )}
       </div>
+    );
+  };
+
+  const severityMap: Record<RiskSeverity, { color: string; bg: string; label: string }> = {
+    high: { color: '#ff4d4f', bg: '#fff1f0', label: '高风险' },
+    medium: { color: '#faad14', bg: '#fffbe6', label: '中风险' },
+    low: { color: '#52c41a', bg: '#f6ffed', label: '低风险' },
+  };
+
+  const renderRiskCard = (risk: OrderRisk) => {
+    const s = severityMap[risk.severity];
+    return (
+      <Card
+        key={risk.id}
+        size="small"
+        hoverable
+        onClick={() => handleRiskClick(risk)}
+        style={{
+          marginBottom: 12,
+          borderTop: `4px solid ${s.color}`,
+          background: s.bg,
+        }}
+        title={
+          <Space>
+            <Tag color={s.color} style={{ margin: 0 }}>{s.label}</Tag>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>{risk.title}</span>
+          </Space>
+        }
+        extra={<span style={{ fontSize: 12, color: '#8c8c8c' }}>👤 {risk.patientName}</span>}
+      >
+        <div style={{ fontSize: 12, color: '#595959', marginBottom: 8 }}>{risk.description}</div>
+        <Alert
+          type={risk.severity === 'high' ? 'error' : risk.severity === 'medium' ? 'warning' : 'info'}
+          showIcon
+          icon={<CheckCircleOutlined />}
+          message={<span style={{ fontSize: 12 }}>💡 处理建议</span>}
+          description={<div style={{ fontSize: 12 }}>{risk.suggestion}</div>}
+          style={{ padding: '6px 10px' }}
+        />
+        <Divider style={{ margin: '8px 0' }} />
+        <div style={{ fontSize: 12 }}>
+          <div style={{ color: '#8c8c8c', marginBottom: 4 }}>涉及处方（点击定位）：</div>
+          <Space wrap>
+            {risk.prescriptions.map((p) => {
+              const cat = getCategory(p);
+              return (
+                <Tag key={p.id} color={categoryMeta[cat].color} style={{ cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); onSelectPrescription(p); }}>
+                  {categoryMeta[cat].label} · {p.prescriptionNo} · {dayjs(p.scheduleTime).format('HH:mm')}
+                </Tag>
+              );
+            })}
+          </Space>
+        </div>
+      </Card>
     );
   };
 
   return (
     <div>
-      {conflicts.length > 0 && (
-        <Alert
-          type="warning"
-          showIcon
-          icon={<WarningOutlined />}
-          message={`检测到 ${conflicts.length} 组可能的给药顺序冲突（化疗/营养液安排在抗生素前）`}
-          style={{ marginBottom: 16 }}
-          description={
-            <ul style={{ margin: 0, paddingLeft: 20 }}>
-              {conflicts.map((arr, i) => (
-                <li key={i} style={{ marginTop: 4 }}>
-                  <strong>{arr[0].patient?.name}</strong> - {arr.map((a) => `${zoneMap[a.zoneType]?.label}@${dayjs(a.scheduleTime).format('HH:mm')}`).join(' → ')}
-                </li>
-              ))}
-            </ul>
-          }
-        />
+      <Tabs
+            activeKey={previewTab}
+            onChange={(k) => setPreviewTab(k as 'overview' | 'patient' | 'risk')}
+            style={{ marginBottom: 16 }}
+        items={[
+          {
+            key: 'overview',
+            label: <span><DesktopOutlined /> 分区工位总览</span>,
+          },
+          {
+            key: 'patient',
+            label: (
+              <span>
+                <UserOutlined /> 患者给药时序
+                <Badge count={Object.keys(prescriptionsByPatient).length} style={{ marginLeft: 6 }} />
+              </span>
+            ),
+          },
+          {
+            key: 'risk',
+            label: (
+              <span>
+                <WarningOutlined /> 顺序风险看板
+                {risks.length > 0 && (
+                  <Badge
+                    count={risks.filter((r) => r.severity === 'high').length}
+                    style={{ marginLeft: 6, backgroundColor: '#ff4d4f' }}
+                  />
+                )}
+              </span>
+            ),
+          },
+        ]}
+      />
+
+      {previewTab === 'risk' && (
+        <>
+          {risks.length === 0 ? (
+            <Card>
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={
+                  <div>
+                    <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 32, marginBottom: 8 }} />
+                    <div>今日排班无给药顺序风险</div>
+                    <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>
+                      所有患者的抗生素、化疗、营养液顺序合规，间隔窗口满足要求
+                    </div>
+                  </div>
+                }
+              />
+            </Card>
+          ) : (
+            <>
+              <Alert
+                type={risks.some((r) => r.severity === 'high') ? 'error' : 'warning'}
+                showIcon
+                icon={<WarningOutlined />}
+                message={`检测到 ${risks.length} 项给药顺序风险（高风险 ${risks.filter((r) => r.severity === 'high').length} 项，中风险 ${risks.filter((r) => r.severity === 'medium').length} 项）`}
+                description="点击下方风险卡片可自动定位到相关处方，查看详情并调整排程。"
+                style={{ marginBottom: 16 }}
+              />
+              <Row gutter={16}>
+                {risks.map((r) => (
+                  <Col span={12} key={r.id}>
+                    {renderRiskCard(r)}
+                  </Col>
+                ))}
+              </Row>
+            </>
+          )}
+        </>
       )}
 
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        {zones.map((z) => {
-          const zPrescriptions = todayPrescriptions.filter((p) => p.zoneType === z.key);
-          return (
-            <Col span={6} key={z.key}>
-              <Card
-                size="small"
-                title={
-                  <Space>
-                    <Tag color={z.color}>{z.label}</Tag>
-                    <span style={{ fontSize: 12 }}>{zPrescriptions.length} 单</span>
-                  </Space>
-                }
-                style={{ borderTop: `3px solid` }}
-              >
-                {zPrescriptions.length === 0 ? (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无排程" />
-                ) : (
-                  zPrescriptions.map(renderPrescriptionCard)
-                )}
-              </Card>
-            </Col>
-          );
-        })}
-      </Row>
+      {previewTab === 'patient' && (
+        <Row gutter={16}>
+          {Object.entries(prescriptionsByPatient).map(([pid, arr]) => {
+            const patient = arr[0].patient;
+            const cats = Array.from(new Set(arr.map(getCategory)));
+            const hasRisk = risks.some((r) => r.prescriptions.some((p) => p.patientId === pid));
+            return (
+              <Col span={12} key={pid}>
+                <Card
+                  size="small"
+                  title={
+                    <Space>
+                      <Avatar size={24} style={{ background: hasRisk ? '#ff4d4f' : '#1677ff', fontSize: 12 }}>
+                        {patient?.name?.charAt(0)}
+                      </Avatar>
+                      <strong>{patient?.name}</strong>
+                      <Tag>{patient?.bedNumber}</Tag>
+                      {hasRisk && <Tag color="red" icon={<WarningOutlined />}>有序列风险</Tag>}
+                      <Space size={4}>
+                        {cats.map((c) => (
+                          <Tag key={c} color={categoryMeta[c].color}>{categoryMeta[c].label}</Tag>
+                        ))}
+                      </Space>
+                    </Space>
+                  }
+                  extra={<span style={{ color: '#8c8c8c', fontSize: 12 }}>{arr.length} 剂</span>}
+                  style={{ marginBottom: 16 }}
+                >
+                  <Timeline
+                    items={arr.map((p) => {
+                      const cat = getCategory(p);
+                      return {
+                        color: categoryMeta[cat].color as any,
+                        dot: <ClockCircleOutlined />,
+                        children: (
+                          <div onClick={() => onSelectPrescription(p)} style={{ cursor: 'pointer' }}>
+                            <div>
+                              <Tag color={categoryMeta[cat].color}>{categoryMeta[cat].label}</Tag>
+                              <strong>{dayjs(p.scheduleTime).format('HH:mm')}</strong>
+                              <span style={{ marginLeft: 8, color: '#8c8c8c', fontSize: 12 }}>
+                                ~ {dayjs(p.scheduleTime).add(p.expectedDuration, 'minute').format('HH:mm')}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 12, marginTop: 4 }}>
+                              {p.items.map((i) => i.drugName).slice(0, 2).join(' / ')}
+                            </div>
+                            <div style={{ color: '#1677ff', fontSize: 11 }}>{p.prescriptionNo}</div>
+                          </div>
+                        ),
+                      };
+                    })}
+                  />
+                </Card>
+              </Col>
+            );
+          })}
+        </Row>
+      )}
 
-      <Divider orientation="left"><DesktopOutlined /> 按工位分配队列</Divider>
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        {workstations.map((w) => (
-          <Col span={6} key={w.id}>
-            <Card
-              size="small"
-              title={
-                <Space>
-                  <Tooltip title={zoneMap[w.zoneType]?.label}>
-                    <Tag color={zoneMap[w.zoneType]?.color}>{w.name}</Tag>
-                  </Tooltip>
-                  <span style={{ fontSize: 11, color: '#8c8c8c' }}>
-                    {w.currentStatus === 'idle' ? '空闲' : w.currentStatus === 'occupied' ? '调配中' : w.currentStatus}
-                  </span>
-                </Space>
-              }
-            >
-              {(!prescriptionsByWorkstation[w.id] || prescriptionsByWorkstation[w.id].length === 0) ? (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="无分配" />
-              ) : (
-                prescriptionsByWorkstation[w.id].map(renderPrescriptionCard)
-              )}
-            </Card>
-          </Col>
-        ))}
-      </Row>
+      {previewTab === 'overview' && (
+        <>
+          {risks.length > 0 && (
+            <Alert
+              type={risks.some((r) => r.severity === 'high') ? 'error' : 'warning'}
+              showIcon
+              icon={<WarningOutlined />}
+              message={`检测到 ${risks.length} 项给药顺序风险，切换到「顺序风险看板」查看详情和处理建议`}
+              style={{ marginBottom: 16, cursor: 'pointer' }}
+              onClick={() => setPreviewTab('risk')}
+            />
+          )}
 
-      <Divider orientation="left"><TeamOutlined /> 按人员调配队列</Divider>
-      <Row gutter={16}>
-        {staff.filter((s) => s.isOnDuty && (s.role === 'pharmacist_dispenser' || s.role === 'nurse')).map((s) => (
-          <Col span={6} key={s.id}>
-            <Card
-              size="small"
-              title={
-                <Space>
-                  <Avatar size={24} style={{ background: '#1677ff', fontSize: 12 }}>
-                    {s.name.charAt(0)}
-                  </Avatar>
-                  <span style={{ fontWeight: 600 }}>{s.name}</span>
-                  <Tag color={s.role === 'pharmacist_dispenser' ? 'blue' : 'green'}>
-                    {s.role === 'pharmacist_dispenser' ? '药师' : '护士'}
-                  </Tag>
-                </Space>
-              }
-              extra={<RocketOutlined style={{ color: '#52c41a' }} />}
-            >
-              {(!prescriptionsByStaff[s.id] || prescriptionsByStaff[s.id].length === 0) ? (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="空闲" />
-              ) : (
-                prescriptionsByStaff[s.id].map(renderPrescriptionCard)
-              )}
-            </Card>
-          </Col>
-        ))}
-      </Row>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            {zones.map((z) => {
+              const zPrescriptions = todayPrescriptions.filter((p) => p.zoneType === z.key);
+              return (
+                <Col span={6} key={z.key}>
+                  <Card
+                    size="small"
+                    title={
+                      <Space>
+                        <Tag color={z.color}>{z.label}</Tag>
+                        <span style={{ fontSize: 12 }}>{zPrescriptions.length} 单</span>
+                      </Space>
+                    }
+                    style={{ borderTop: `3px solid` }}
+                  >
+                    {zPrescriptions.length === 0 ? (
+                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无排程" />
+                    ) : (
+                      zPrescriptions.map(renderPrescriptionCard)
+                    )}
+                  </Card>
+                </Col>
+              );
+            })}
+          </Row>
+
+          <Divider orientation="left"><DesktopOutlined /> 按工位分配队列</Divider>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            {workstations.map((w) => (
+              <Col span={6} key={w.id}>
+                <Card
+                  size="small"
+                  title={
+                    <Space>
+                      <Tooltip title={zoneMap[w.zoneType]?.label}>
+                        <Tag color={zoneMap[w.zoneType]?.color}>{w.name}</Tag>
+                      </Tooltip>
+                      <span style={{ fontSize: 11, color: '#8c8c8c' }}>
+                        {w.currentStatus === 'idle' ? '空闲' : w.currentStatus === 'occupied' ? '调配中' : w.currentStatus}
+                      </span>
+                    </Space>
+                  }
+                >
+                  {(!prescriptionsByWorkstation[w.id] || prescriptionsByWorkstation[w.id].length === 0) ? (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="无分配" />
+                  ) : (
+                    prescriptionsByWorkstation[w.id].map(renderPrescriptionCard)
+                  )}
+                </Card>
+              </Col>
+            ))}
+          </Row>
+
+          <Divider orientation="left"><TeamOutlined /> 按人员调配队列</Divider>
+          <Row gutter={16}>
+            {staff.filter((s) => s.isOnDuty && (s.role === 'pharmacist_dispenser' || s.role === 'nurse')).map((s) => (
+              <Col span={6} key={s.id}>
+                <Card
+                  size="small"
+                  title={
+                    <Space>
+                      <Avatar size={24} style={{ background: '#1677ff', fontSize: 12 }}>
+                        {s.name.charAt(0)}
+                      </Avatar>
+                      <span style={{ fontWeight: 600 }}>{s.name}</span>
+                      <Tag color={s.role === 'pharmacist_dispenser' ? 'blue' : 'green'}>
+                        {s.role === 'pharmacist_dispenser' ? '药师' : '护士'}
+                      </Tag>
+                    </Space>
+                  }
+                  extra={<RocketOutlined style={{ color: '#52c41a' }} />}
+                >
+                  {(!prescriptionsByStaff[s.id] || prescriptionsByStaff[s.id].length === 0) ? (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="空闲" />
+                  ) : (
+                    prescriptionsByStaff[s.id].map(renderPrescriptionCard)
+                  )}
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        </>
+      )}
     </div>
   );
 };
