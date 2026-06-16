@@ -94,6 +94,9 @@ export interface Prescription {
     description: string;
     time: string;
   }[];
+  claimedBy?: string | null;
+  claimedByName?: string | null;
+  claimedAt?: string | null;
   lastAdjustment?: {
     previousWorkstationId?: string | null;
     previousWorkstationName?: string;

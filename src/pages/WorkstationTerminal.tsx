@@ -37,6 +37,8 @@ import {
   SwapRightOutlined,
   EyeOutlined,
   AuditOutlined,
+  UserAddOutlined,
+  UserSwitchOutlined,
 } from '@ant-design/icons';
 import { useAppStore } from '../store/useAppStore';
 import { Prescription, Workstation, Staff, ZoneType } from '../types';
@@ -78,10 +80,12 @@ const WorkstationTerminal: React.FC = () => {
     workstations,
     staff,
     currentUserId,
+    adjustmentRequests,
     updatePrescriptionStatus,
     requestAdjustment,
     reviewPrescription,
     setCurrentUserId,
+    claimTask,
   } = useAppStore();
 
   const currentUser = staff.find((s) => s.id === currentUserId) || staff[0];
@@ -103,6 +107,9 @@ const WorkstationTerminal: React.FC = () => {
   const [approvalModal, setApprovalModal] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<Prescription | null>(null);
 
+  const selectedWsId = Form.useWatch('workstationId', form);
+  const selectedPhId = Form.useWatch('pharmacistId', form);
+
   const accessibleZones = useMemo(() => {
     if (viewMode === 'director') return ['antibiotic_zone', 'chemo_zone', 'nutrition_zone', 'general_zone'] as ZoneType[];
     return (currentUser?.skills as ZoneType[]) || ['general_zone'];
@@ -123,11 +130,15 @@ const WorkstationTerminal: React.FC = () => {
         ['reviewed', 'dispensing', 'checking', 'adjustment_approved'].includes(p.status)
       );
       list = list.filter((p) => p.workstationId === selectedWorkstationId);
-      list = list.filter((p) =>
-        p.status === 'dispensing'
-          ? p.assignedPharmacistId === currentUserId
-          : true
-      );
+      list = list.filter((p) => {
+        if (p.status === 'reviewed') {
+          return !p.claimedBy || p.claimedBy === currentUserId;
+        }
+        if (p.status === 'dispensing') {
+          return p.claimedBy === currentUserId || p.assignedPharmacistId === currentUserId;
+        }
+        return true;
+      });
     } else {
       list = list.filter((p) => accessibleZones.includes(p.zoneType));
     }
@@ -137,7 +148,15 @@ const WorkstationTerminal: React.FC = () => {
 
   const selectedWorkstation = workstations.find((w) => w.id === selectedWorkstationId);
 
+  const handleClaim = (p: Prescription) => {
+    claimTask(p.id, currentUserId);
+    message.success(`已领取处方 ${p.prescriptionNo}，请到您的队列中查看`);
+  };
+
   const handleStart = (p: Prescription) => {
+    if (!p.claimedBy) {
+      claimTask(p.id, currentUserId);
+    }
     updatePrescriptionStatus(p.id, 'dispensing', currentUser?.name || '', '药师开始调配');
     message.success(`开始调配处方 ${p.prescriptionNo}`);
   };
@@ -169,6 +188,35 @@ const WorkstationTerminal: React.FC = () => {
     form.resetFields();
     setSelectedPrescription(null);
     message.success('调整申请已提交，等待药学部主任审批');
+  };
+
+  const checkPharmacistMatch = (p: Prescription) => {
+    const req = adjustmentRequests.find((r) => r.prescriptionId === p.id && r.status === 'pending');
+    if (!req) return { ok: true, suggestions: [] as Staff[] };
+
+    const targetWsId = req.proposedChanges.workstationId || p.workstationId;
+    const targetPhId = req.proposedChanges.pharmacistId || p.assignedPharmacistId;
+
+    if (!targetWsId || !targetPhId) return { ok: true, suggestions: [] as Staff[] };
+
+    const targetWs = workstations.find((w) => w.id === targetWsId);
+    const targetPh = staff.find((s) => s.id === targetPhId);
+
+    if (!targetWs || !targetPh) return { ok: true, suggestions: [] as Staff[] };
+
+    const hasSkill = (targetPh.skills as ZoneType[]).includes(targetWs.zoneType);
+
+    if (hasSkill) return { ok: true, suggestions: [] as Staff[] };
+
+    const suitablePharmacists = staff.filter(
+      (s) =>
+        s.isOnDuty &&
+        s.id !== targetPhId &&
+        (s.role === 'pharmacist_dispenser' || s.role === 'nurse') &&
+        (s.skills as ZoneType[]).includes(targetWs.zoneType)
+    );
+
+    return { ok: false, suggestions: suitablePharmacists };
   };
 
   const handleApproveAdjust = (p: Prescription, approved: boolean) => {
@@ -232,6 +280,16 @@ const WorkstationTerminal: React.FC = () => {
             {idx === 0 && p.status === 'reviewed' && viewMode === 'dispenser' && (
               <Tag color="red" icon={<PlayCircleOutlined />}>
                 下一张
+              </Tag>
+            )}
+            {p.status === 'reviewed' && p.claimedBy && p.claimedBy === currentUserId && (
+              <Tag color="blue" icon={<UserSwitchOutlined />}>
+                已领取
+              </Tag>
+            )}
+            {p.status === 'reviewed' && p.claimedBy && p.claimedBy !== currentUserId && (
+              <Tag color="default" icon={<UserOutlined />}>
+                {p.claimedByName} 领取中
               </Tag>
             )}
             {p.lastAdjustment && (
@@ -302,12 +360,17 @@ const WorkstationTerminal: React.FC = () => {
               审方通过
             </Button>
           )}
-          {viewMode === 'dispenser' && p.status === 'reviewed' && (
+          {viewMode === 'dispenser' && p.status === 'reviewed' && !p.claimedBy && (
+            <Button type="primary" size="small" icon={<UserAddOutlined />} onClick={(e) => { e.stopPropagation(); handleClaim(p); }}>
+              领取任务
+            </Button>
+          )}
+          {viewMode === 'dispenser' && p.status === 'reviewed' && p.claimedBy === currentUserId && (
             <Button type="primary" size="small" icon={<PlayCircleOutlined />} onClick={(e) => { e.stopPropagation(); handleStart(p); }}>
               开始调配
             </Button>
           )}
-          {viewMode === 'dispenser' && p.status === 'dispensing' && p.assignedPharmacistId === currentUserId && (
+          {viewMode === 'dispenser' && p.status === 'dispensing' && (p.claimedBy === currentUserId || p.assignedPharmacistId === currentUserId) && (
             <Button type="primary" size="small" icon={<CheckCircleOutlined />} onClick={(e) => { e.stopPropagation(); handleFinish(p); }}>
               完成调配
             </Button>
@@ -636,9 +699,29 @@ const WorkstationTerminal: React.FC = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item label="重新分配工位" name="workstationId">
-                <Select showSearch placeholder="选择工位" optionFilterProp="label">
+                <Select
+                  showSearch
+                  placeholder="选择工位"
+                  optionFilterProp="label"
+                  onChange={(val) => {
+                    const selectedWs = workstations.find((w) => w.id === val);
+                    const currentPh = form.getFieldValue('pharmacistId');
+                    if (selectedWs && currentPh) {
+                      const ph = staff.find((s) => s.id === currentPh);
+                      if (ph && !(ph.skills as ZoneType[]).includes(selectedWs.zoneType)) {
+                        form.setFieldsValue({ pharmacistId: undefined });
+                        message.warning(`所选药师不具备${zoneMap[selectedWs.zoneType]?.label}操作资质，已自动清空`);
+                      }
+                    }
+                  }}
+                >
                   {workstations
                     .filter((w) => w.currentStatus !== 'maintenance')
+                    .filter((w) => {
+                      if (!selectedPhId) return true;
+                      const ph = staff.find((s) => s.id === selectedPhId);
+                      return ph ? (ph.skills as ZoneType[]).includes(w.zoneType) : true;
+                    })
                     .map((w) => (
                       <Select.Option key={w.id} value={w.id} label={w.name}>
                         {w.name} [{zoneMap[w.zoneType]?.label}]
@@ -649,12 +732,37 @@ const WorkstationTerminal: React.FC = () => {
             </Col>
             <Col span={12}>
               <Form.Item label="重新分配药师" name="pharmacistId">
-                <Select showSearch placeholder="选择药师" optionFilterProp="label">
+                <Select
+                  showSearch
+                  placeholder="选择药师"
+                  optionFilterProp="label"
+                  onChange={(val) => {
+                    const selectedPh = staff.find((s) => s.id === val);
+                    const currentWs = form.getFieldValue('workstationId');
+                    if (selectedPh && currentWs) {
+                      const ws = workstations.find((w) => w.id === currentWs);
+                      if (ws && !(selectedPh.skills as ZoneType[]).includes(ws.zoneType)) {
+                        form.setFieldsValue({ workstationId: undefined });
+                        message.warning(`所选工位${zoneMap[ws.zoneType]?.label}不在该药师资质范围内，已自动清空`);
+                      }
+                    }
+                  }}
+                >
                   {staff
                     .filter((s) => s.isOnDuty && (s.role === 'pharmacist_dispenser' || s.role === 'nurse'))
+                    .filter((s) => {
+                      if (!selectedWsId) return true;
+                      const ws = workstations.find((w) => w.id === selectedWsId);
+                      return ws ? (s.skills as ZoneType[]).includes(ws.zoneType) : true;
+                    })
                     .map((s) => (
                       <Select.Option key={s.id} value={s.id} label={s.name}>
-                        {s.name} ({s.role === 'pharmacist_dispenser' ? '药师' : '护士'})
+                        <Space>
+                          <span>{s.name}</span>
+                          <span style={{ color: '#8c8c8c', fontSize: 11 }}>
+                            ({s.skills.map((sk) => zoneMap[sk]?.label).join('、')})
+                          </span>
+                        </Space>
                       </Select.Option>
                     ))}
                 </Select>
@@ -671,26 +779,93 @@ const WorkstationTerminal: React.FC = () => {
       </Modal>
 
       <Modal
-        title="审批调整申请"
+        title="审批调整申请 · 主任指挥台"
         open={approvalModal}
         onCancel={() => { setApprovalModal(false); setPendingApproval(null); }}
         footer={[
           <Button key="reject" danger onClick={() => pendingApproval && handleApproveAdjust(pendingApproval, false)}>
             驳回申请
           </Button>,
-          <Button key="approve" type="primary" onClick={() => pendingApproval && handleApproveAdjust(pendingApproval, true)}>
+          <Button
+            key="approve"
+            type="primary"
+            disabled={pendingApproval ? !checkPharmacistMatch(pendingApproval).ok : false}
+            onClick={() => pendingApproval && handleApproveAdjust(pendingApproval, true)}
+          >
             批准调整
           </Button>,
         ]}
-        width={600}
+        width={700}
       >
         {pendingApproval && (
           <>
             <Alert type="warning" showIcon message={`处方 ${pendingApproval.prescriptionNo}（${pendingApproval.patient?.name}）的调整申请等待审批`} style={{ marginBottom: 16 }} />
+
+            <Card size="small" title={<Space><SwapRightOutlined style={{ color: '#1677ff' }} />调整前后对比</Space>} style={{ marginBottom: 16 }}>
+              {(() => {
+                const req = adjustmentRequests.find((r) => r.prescriptionId === pendingApproval.id && r.status === 'pending');
+                const newWs = req?.proposedChanges.workstationId
+                  ? workstations.find((w) => w.id === req.proposedChanges.workstationId)
+                  : null;
+                const newPh = req?.proposedChanges.pharmacistId
+                  ? staff.find((s) => s.id === req.proposedChanges.pharmacistId)
+                  : null;
+                const match = checkPharmacistMatch(pendingApproval);
+
+                return (
+                  <>
+                    <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
+                      📝 调整原因：{req?.reason || '-'}
+                    </div>
+                    {renderDiffTag('分配工位', pendingApproval.workstationName || '未分配', newWs?.name)}
+                    {renderDiffTag('调配药师', pendingApproval.assignedPharmacistName || '未分配', newPh?.name)}
+                    {req?.proposedChanges.scheduleTime && renderDiffTag('排程时间', pendingApproval.scheduleTime, req.proposedChanges.scheduleTime)}
+
+                    {newWs && newPh && (
+                      <div style={{ marginTop: 12, padding: '8px 12px', background: match.ok ? '#f6ffed' : '#fff1f0', borderRadius: 6 }}>
+                        <Space size="middle">
+                          <span style={{ fontWeight: 600, color: match.ok ? '#52c41a' : '#ff4d4f' }}>
+                            {match.ok ? '✅ 人员-分区匹配' : '⚠️ 人员-分区不匹配'}
+                          </span>
+                          <span style={{ fontSize: 12, color: '#595959' }}>
+                            {newWs.name} 属于 <Tag color={zoneMap[newWs.zoneType]?.color}>{zoneMap[newWs.zoneType]?.label}</Tag>
+                            {newPh.name} 技能：{newPh.skills.map((s) => zoneMap[s]?.label).join('、') || '无'}
+                          </span>
+                        </Space>
+                      </div>
+                    )}
+
+                    {!match.ok && match.suggestions.length > 0 && (
+                      <Alert
+                        type="error"
+                        showIcon
+                        style={{ marginTop: 12 }}
+                        message={
+                          <div>
+                            <div style={{ fontWeight: 600, marginBottom: 4 }}>建议更换以下药师：</div>
+                            <Space wrap>
+                              {match.suggestions.map((s) => (
+                                <Tag key={s.id} color="blue">
+                                  {s.name}（{s.skills.map((sk) => zoneMap[sk]?.label).join('、')}）
+                                </Tag>
+                              ))}
+                            </Space>
+                          </div>
+                        }
+                      />
+                    )}
+                  </>
+                );
+              })()}
+            </Card>
+
             <Descriptions bordered size="small" column={1}>
-              <Descriptions.Item label="当前工位">{pendingApproval.workstationName}</Descriptions.Item>
-              <Descriptions.Item label="当前药师">{pendingApproval.assignedPharmacistName}</Descriptions.Item>
-              <Descriptions.Item label="当前时间">{pendingApproval.scheduleTime}</Descriptions.Item>
+              <Descriptions.Item label="申请人">
+                {adjustmentRequests.find((r) => r.prescriptionId === pendingApproval.id && r.status === 'pending')?.requesterName || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="申请时间">
+                {adjustmentRequests.find((r) => r.prescriptionId === pendingApproval.id && r.status === 'pending')?.requestedTime || '-'}
+              </Descriptions.Item>
             </Descriptions>
           </>
         )}

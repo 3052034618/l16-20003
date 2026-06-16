@@ -58,6 +58,8 @@ interface AppState {
   updatePrescription: (id: string, updates: Partial<Prescription>) => void;
   updatePrescriptionStatus: (id: string, status: PrescriptionStatus, operator: string, note?: string) => void;
   reviewPrescription: (id: string, approved: boolean, reviewerId: string, note?: string) => void;
+  claimTask: (prescriptionId: string, pharmacistId: string) => void;
+  unclaimTask: (prescriptionId: string) => void;
 
   requestAdjustment: (prescriptionId: string, requesterId: string, requesterName: string, reason: string, proposedChanges: AdjustmentRequest['proposedChanges']) => void;
   reviewAdjustment: (requestId: string, approved: boolean, reviewerId: string, reviewNote?: string) => void;
@@ -330,6 +332,49 @@ export const useAppStore = create<AppState>((set, get) => ({
     get().addNotification('success', `处方${approved ? '审核通过' : '审核驳回'}`);
   },
 
+  claimTask: (prescriptionId, pharmacistId) => {
+    set((state) => {
+      const pharmacist = state.staff.find((s) => s.id === pharmacistId);
+      return {
+        prescriptions: state.prescriptions.map((p) =>
+          p.id === prescriptionId && p.status === 'reviewed' && !p.claimedBy
+            ? {
+                ...p,
+                claimedBy: pharmacistId,
+                claimedByName: pharmacist?.name || '',
+                claimedAt: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+                statusHistory: [
+                  ...p.statusHistory,
+                  {
+                    status: 'reviewed' as PrescriptionStatus,
+                    time: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+                    operator: pharmacistId,
+                    note: `${pharmacist?.name || pharmacistId} 领取任务`,
+                  },
+                ],
+              }
+            : p
+        ),
+      };
+    });
+    get().addNotification('info', '任务已领取');
+  },
+
+  unclaimTask: (prescriptionId) => {
+    set((state) => ({
+      prescriptions: state.prescriptions.map((p) =>
+        p.id === prescriptionId
+          ? {
+              ...p,
+              claimedBy: null,
+              claimedByName: null,
+              claimedAt: null,
+            }
+          : p
+      ),
+    }));
+  },
+
   requestAdjustment: (prescriptionId, requesterId, requesterName, reason, proposedChanges) => {
     const request: AdjustmentRequest = {
       id: 'ar_' + Date.now(),
@@ -412,6 +457,14 @@ export const useAppStore = create<AppState>((set, get) => ({
             const st = state.staff.find((s) => s.id === request.proposedChanges.pharmacistId);
             updates.assignedPharmacistId = request.proposedChanges.pharmacistId;
             updates.assignedPharmacistName = st?.name;
+            updates.claimedBy = null;
+            updates.claimedByName = null;
+            updates.claimedAt = null;
+          }
+          if (approved && request.proposedChanges.workstationId && p.claimedBy) {
+            updates.claimedBy = null;
+            updates.claimedByName = null;
+            updates.claimedAt = null;
           }
           if (approved && request.proposedChanges.scheduleTime) {
             updates.scheduleTime = request.proposedChanges.scheduleTime;
