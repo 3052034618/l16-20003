@@ -1,0 +1,42 @@
+const { app, BrowserWindow, ipcMain } = require('electron');
+const path = require('path');
+
+const isDev = process.env.NODE_ENV === 'development';
+
+function createWindow() {
+  const mainWindow = new BrowserWindow({
+    width: 1600,
+    height: 1000,
+    minWidth: 1280,
+    minHeight: 800,
+    title: 'PIVAS智能调度与质量管理系统',
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      enableRemoteModule: true,
+    },
+  });
+
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  }
+}
+
+app.whenReady().then(() => {
+  createWindow();
+
+  app.on('activate', function () {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', function () {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
+});
