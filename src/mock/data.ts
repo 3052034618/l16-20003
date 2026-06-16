@@ -59,7 +59,7 @@ export const mockDoctorOrders: DoctorOrder[] = [
     ],
     priority: 'urgent',
     isValid: true,
-    reviewStatus: 'pending',
+    reviewStatus: 'approved',
   },
   {
     id: 'o002',
@@ -77,7 +77,7 @@ export const mockDoctorOrders: DoctorOrder[] = [
     ],
     priority: 'normal',
     isValid: true,
-    reviewStatus: 'pending',
+    reviewStatus: 'approved',
   },
   {
     id: 'o003',
@@ -95,7 +95,7 @@ export const mockDoctorOrders: DoctorOrder[] = [
     ],
     priority: 'urgent',
     isValid: true,
-    reviewStatus: 'pending',
+    reviewStatus: 'approved',
   },
   {
     id: 'o004',
@@ -276,7 +276,8 @@ export const generateBarcode = () => {
 };
 
 export const generatePrescriptions = (): Prescription[] => {
-  return mockDoctorOrders.slice(0, 5).map((order, idx) => ({
+  const approvedOrders = mockDoctorOrders.filter((o) => o.reviewStatus === 'approved');
+  return approvedOrders.map((order, idx) => ({
     id: 'pr' + (idx + 1),
     prescriptionNo: generatePrescriptionNo(),
     orderId: order.id,
@@ -291,7 +292,7 @@ export const generatePrescriptions = (): Prescription[] => {
     workstationName: idx < 3 ? '抗生素区-BSC-01' : '化疗区-BSC-01',
     assignedPharmacistId: idx < 3 ? 's003' : 's004',
     assignedPharmacistName: idx < 3 ? '张药师' : '刘药师',
-    status: (['pending_review', 'reviewed', 'dispensing', 'checking', 'pending_review'] as any)[idx],
+    status: (['pending_review', 'reviewed', 'dispensing'] as any)[idx],
     statusHistory: [{ status: 'pending_review', time: order.orderTime, operator: '系统自动生成' }],
     drugConflicts: [],
     barcode: generateBarcode(),

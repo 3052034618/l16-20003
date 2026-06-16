@@ -22,6 +22,9 @@ import {
   Badge,
   Alert,
   Divider,
+  Tabs,
+  Empty,
+  Avatar,
 } from 'antd';
 import {
   PlayCircleOutlined,
@@ -36,6 +39,9 @@ import {
   ClockCircleOutlined,
   CheckSquareOutlined,
   ThunderboltOutlined,
+  TeamOutlined,
+  DesktopOutlined,
+  RocketOutlined,
 } from '@ant-design/icons';
 import { useAppStore } from '../store/useAppStore';
 import { Prescription, PrescriptionStatus, Workstation, Staff } from '../types';
@@ -64,6 +70,7 @@ const PrescriptionSchedule: React.FC = () => {
   const [currentPrescription, setCurrentPrescription] = useState<Prescription | null>(null);
   const [adjustModal, setAdjustModal] = useState(false);
   const [form] = Form.useForm();
+  const [activeTab, setActiveTab] = useState('list');
 
   const zoneMap: Record<string, { label: string; color: string }> = {
     antibiotic_zone: { label: '抗生素区', color: 'blue' },
@@ -366,98 +373,128 @@ const PrescriptionSchedule: React.FC = () => {
           </Row>
         </div>
 
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message={
-            <Space size="large">
-              <span>💡 调度规则：抗生素优先 → 常规用药 → 化疗药延后2小时</span>
-              <span>🏥 分区隔离：化疗/营养/抗生素/普通四区独立分配</span>
-              <span>⏱️ 超时预警：调配超预计+30分钟自动告警并可重调度</span>
-            </Space>
-          }
-        />
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={[
+            {
+              key: 'list',
+              label: '📋 处方排程列表',
+              children: (
+                <>
+                  <Alert
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                    message={
+                      <Space size="large">
+                        <span>💡 调度规则：抗生素优先 → 常规用药 → 化疗药延后2小时</span>
+                        <span>🏥 分区隔离：化疗/营养/抗生素/普通四区独立分配</span>
+                        <span>⏱️ 超时预警：调配超预计+30分钟自动告警并可重调度</span>
+                      </Space>
+                    }
+                  />
 
-        <Row gutter={[16, 12]} style={{ marginBottom: 16 }}>
-          <Col span={6}>
-            <Search
-              placeholder="搜索处方号/患者/药师"
-              allowClear
-              onSearch={setSearchText}
-              onChange={(e) => !e.target.value && setSearchText('')}
-            />
-          </Col>
-          <Col span={4}>
-            <Select value={zoneFilter} onChange={setZoneFilter} style={{ width: '100%' }}>
-              <Select.Option value="all">全部分区</Select.Option>
-              <Select.Option value="antibiotic_zone">抗生素区</Select.Option>
-              <Select.Option value="chemo_zone">化疗药区</Select.Option>
-              <Select.Option value="nutrition_zone">营养区</Select.Option>
-              <Select.Option value="general_zone">普通区</Select.Option>
-            </Select>
-          </Col>
-          <Col span={4}>
-            <Select value={statusFilter} onChange={setStatusFilter} style={{ width: '100%' }}>
-              <Select.Option value="all">全部状态</Select.Option>
-              <Select.Option value="pending_review">待审核</Select.Option>
-              <Select.Option value="reviewed">已审核待调配</Select.Option>
-              <Select.Option value="dispensing">调配中</Select.Option>
-              <Select.Option value="checking">核对中</Select.Option>
-              <Select.Option value="delivered">已配送</Select.Option>
-              <Select.Option value="adjustment_requested">调整申请中</Select.Option>
-            </Select>
-          </Col>
-          <Col span={10}>
-            <Space wrap>
-              {Object.entries(statusMap).map(([key, val]) => {
-                const count = prescriptions.filter((p) => p.status === key).length;
-                return (
-                  <Tag key={key} color={val.color} style={{ padding: '4px 10px', fontSize: 12 }}>
-                    {val.text}: <strong>{count}</strong>
-                  </Tag>
-                );
-              })}
-            </Space>
-          </Col>
-        </Row>
-
-        <Table
-          dataSource={filteredPrescriptions}
-          columns={columns}
-          rowKey="id"
-          scroll={{ x: 1400 }}
-          pagination={{
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 张处方`,
-            defaultPageSize: 10,
-          }}
-          rowClassName={(r) => (isOvertime(r) ? 'row-overtime' : '')}
-          expandable={{
-            expandedRowRender: (r) => (
-              <Card size="small" title="用药明细" style={{ margin: '0 40px' }}>
-                <Row gutter={[16, 8]}>
-                  {r.items.map((item, idx) => (
-                    <Col span={8} key={idx}>
-                      <Tag color="geekblue" style={{ marginBottom: 4 }}>药品{idx + 1}</Tag>
-                      <div style={{ padding: 8, background: '#fafafa', borderRadius: 4 }}>
-                        <div style={{ fontWeight: 600 }}>{item.drugName}</div>
-                        <div style={{ fontSize: 12, color: '#595959' }}>
-                          {item.dosage} · {item.frequency}
-                        </div>
-                        {item.infusionSpeed && (
-                          <div style={{ fontSize: 12, color: '#1677ff' }}>
-                            滴速：{item.infusionSpeed} 滴/分
-                          </div>
-                        )}
-                      </div>
+                  <Row gutter={[16, 12]} style={{ marginBottom: 16 }}>
+                    <Col span={6}>
+                      <Search
+                        placeholder="搜索处方号/患者/药师"
+                        allowClear
+                        onSearch={setSearchText}
+                        onChange={(e) => !e.target.value && setSearchText('')}
+                      />
                     </Col>
-                  ))}
-                </Row>
-              </Card>
-            ),
-          }}
+                    <Col span={4}>
+                      <Select value={zoneFilter} onChange={setZoneFilter} style={{ width: '100%' }}>
+                        <Select.Option value="all">全部分区</Select.Option>
+                        <Select.Option value="antibiotic_zone">抗生素区</Select.Option>
+                        <Select.Option value="chemo_zone">化疗药区</Select.Option>
+                        <Select.Option value="nutrition_zone">营养区</Select.Option>
+                        <Select.Option value="general_zone">普通区</Select.Option>
+                      </Select>
+                    </Col>
+                    <Col span={4}>
+                      <Select value={statusFilter} onChange={setStatusFilter} style={{ width: '100%' }}>
+                        <Select.Option value="all">全部状态</Select.Option>
+                        <Select.Option value="pending_review">待审核</Select.Option>
+                        <Select.Option value="reviewed">已审核待调配</Select.Option>
+                        <Select.Option value="dispensing">调配中</Select.Option>
+                        <Select.Option value="checking">核对中</Select.Option>
+                        <Select.Option value="delivered">已配送</Select.Option>
+                        <Select.Option value="adjustment_requested">调整申请中</Select.Option>
+                      </Select>
+                    </Col>
+                    <Col span={10}>
+                      <Space wrap>
+                        {Object.entries(statusMap).map(([key, val]) => {
+                          const count = prescriptions.filter((p) => p.status === key).length;
+                          return (
+                            <Tag key={key} color={val.color} style={{ padding: '4px 10px', fontSize: 12 }}>
+                              {val.text}: <strong>{count}</strong>
+                            </Tag>
+                          );
+                        })}
+                      </Space>
+                    </Col>
+                  </Row>
+
+                  <Table
+                    dataSource={filteredPrescriptions}
+                    columns={columns}
+                    rowKey="id"
+                    scroll={{ x: 1400 }}
+                    pagination={{
+                      showSizeChanger: true,
+                      showQuickJumper: true,
+                      showTotal: (total) => `共 ${total} 张处方`,
+                      defaultPageSize: 10,
+                    }}
+                    rowClassName={(r) => (isOvertime(r) ? 'row-overtime' : '')}
+                    expandable={{
+                      expandedRowRender: (r) => (
+                        <Card size="small" title="用药明细" style={{ margin: '0 40px' }}>
+                          <Row gutter={[16, 8]}>
+                            {r.items.map((item, idx) => (
+                              <Col span={8} key={idx}>
+                                <Tag color="geekblue" style={{ marginBottom: 4 }}>药品{idx + 1}</Tag>
+                                <div style={{ padding: 8, background: '#fafafa', borderRadius: 4 }}>
+                                  <div style={{ fontWeight: 600 }}>{item.drugName}</div>
+                                  <div style={{ fontSize: 12, color: '#595959' }}>
+                                    {item.dosage} · {item.frequency}
+                                  </div>
+                                  {item.infusionSpeed && (
+                                    <div style={{ fontSize: 12, color: '#1677ff' }}>
+                                      滴速：{item.infusionSpeed} 滴/分
+                                    </div>
+                                  )}
+                                </div>
+                              </Col>
+                            ))}
+                          </Row>
+                        </Card>
+                      ),
+                    }}
+                  />
+                </>
+              ),
+            },
+            {
+              key: 'preview',
+              label: '🎯 调度结果预览',
+              children: (
+                <SchedulePreview
+                  prescriptions={prescriptions}
+                  workstations={workstations}
+                  staff={staff}
+                  zoneMap={zoneMap}
+                  onSelectPrescription={(p) => {
+                    setCurrentPrescription(p);
+                    setDetailDrawer(true);
+                  }}
+                />
+              ),
+            },
+          ]}
         />
       </div>
 
@@ -616,6 +653,226 @@ const PrescriptionSchedule: React.FC = () => {
           background: #ffe7e6 !important;
         }
       `}</style>
+    </div>
+  );
+};
+
+interface SchedulePreviewProps {
+  prescriptions: Prescription[];
+  workstations: Workstation[];
+  staff: Staff[];
+  zoneMap: Record<string, { label: string; color: string }>;
+  onSelectPrescription: (p: Prescription) => void;
+}
+
+const SchedulePreview: React.FC<SchedulePreviewProps> = ({ prescriptions, workstations, staff, zoneMap, onSelectPrescription }) => {
+  const today = dayjs().format('YYYY-MM-DD');
+  const todayPrescriptions = prescriptions.filter((p) => (p.scheduleTime || '').startsWith(today));
+
+  const zones = (['antibiotic_zone', 'chemo_zone', 'nutrition_zone', 'general_zone'] as const).map((z) => ({
+    key: z,
+    ...zoneMap[z],
+  }));
+
+  const prescriptionsByWorkstation: Record<string, Prescription[]> = {};
+  todayPrescriptions.forEach((p) => {
+    if (p.workstationId) {
+      if (!prescriptionsByWorkstation[p.workstationId]) prescriptionsByWorkstation[p.workstationId] = [];
+      prescriptionsByWorkstation[p.workstationId].push(p);
+    }
+  });
+  Object.keys(prescriptionsByWorkstation).forEach((wid) => {
+    prescriptionsByWorkstation[wid].sort((a, b) => dayjs(a.scheduleTime).valueOf() - dayjs(b.scheduleTime).valueOf());
+  });
+
+  const prescriptionsByStaff: Record<string, Prescription[]> = {};
+  todayPrescriptions.forEach((p) => {
+    if (p.assignedPharmacistId) {
+      if (!prescriptionsByStaff[p.assignedPharmacistId]) prescriptionsByStaff[p.assignedPharmacistId] = [];
+      prescriptionsByStaff[p.assignedPharmacistId].push(p);
+    }
+  });
+  Object.keys(prescriptionsByStaff).forEach((sid) => {
+    prescriptionsByStaff[sid].sort((a, b) => dayjs(a.scheduleTime).valueOf() - dayjs(b.scheduleTime).valueOf());
+  });
+
+  const detectZoneOrderConflicts = (): Prescription[][] => {
+    const groups: Prescription[][] = [];
+    const byOrder: Record<string, Prescription[]> = {};
+    todayPrescriptions.forEach((p) => {
+      const oid = p.orderId || p.id;
+      if (!byOrder[oid]) byOrder[oid] = [];
+      byOrder[oid].push(p);
+    });
+    Object.values(byOrder).forEach((arr) => {
+      if (arr.length < 2) return;
+      arr.sort((a, b) => dayjs(a.scheduleTime).valueOf() - dayjs(b.scheduleTime).valueOf());
+      const zones = arr.map((x) => x.zoneType);
+      const hasChemo = zones.includes('chemo_zone');
+      const hasNutrition = zones.includes('nutrition_zone');
+      const hasAntibiotic = zones.includes('antibiotic_zone');
+      if ((hasChemo || hasNutrition) && hasAntibiotic) {
+        const chemoIdx = zones.indexOf('chemo_zone');
+        const nutritionIdx = zones.indexOf('nutrition_zone');
+        const antiIdx = zones.indexOf('antibiotic_zone');
+        if ((chemoIdx >= 0 && chemoIdx < antiIdx) || (nutritionIdx >= 0 && nutritionIdx < antiIdx)) {
+          groups.push(arr);
+        }
+      }
+    });
+    return groups;
+  };
+
+  const conflicts = detectZoneOrderConflicts();
+
+  const renderPrescriptionCard = (p: Prescription) => {
+    const category = p.zoneType === 'antibiotic_zone' ? 'antibiotic' : p.zoneType === 'chemo_zone' ? 'chemotherapy' : p.zoneType === 'nutrition_zone' ? 'nutrition' : 'general';
+    const colors: Record<string, string> = {
+      antibiotic: '#1677ff',
+      chemotherapy: '#eb2f96',
+      nutrition: '#52c41a',
+      general: '#8c8c8c',
+    };
+    const labels: Record<string, string> = {
+      antibiotic: '抗生素',
+      chemotherapy: '化疗药',
+      nutrition: '营养液',
+      general: '常规',
+    };
+    return (
+      <div
+        key={p.id}
+        onClick={() => onSelectPrescription(p)}
+        style={{
+          borderLeft: `4px solid ${colors[category]}`,
+          padding: '8px 10px',
+          background: '#fff',
+          borderRadius: 6,
+          marginBottom: 8,
+          cursor: 'pointer',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Tag color={colors[category]} style={{ margin: 0 }}>{labels[category]}</Tag>
+          <span style={{ fontSize: 11, color: '#8c8c8c' }}>⏰ {dayjs(p.scheduleTime).format('HH:mm')} ~ {dayjs(p.scheduleTime).add(p.expectedDuration, 'minute').format('HH:mm')}</span>
+        </div>
+        <div style={{ fontWeight: 600, fontSize: 13, marginTop: 4 }}>{p.patient?.name}</div>
+        <div style={{ fontSize: 11, color: '#595959', marginTop: 2 }}>
+          {p.items.map((i) => i.drugName).slice(0, 2).join(' / ')}{p.items.length > 2 ? ` +${p.items.length - 2}` : ''}
+        </div>
+        <div style={{ fontSize: 11, color: '#1677ff', marginTop: 2 }}>{p.prescriptionNo}</div>
+        {p.drugConflicts?.length > 0 && (
+          <Tag color="red" style={{ marginTop: 4 }} icon={<WarningOutlined />}>
+            配伍禁忌×{p.drugConflicts.length}
+          </Tag>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      {conflicts.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          icon={<WarningOutlined />}
+          message={`检测到 ${conflicts.length} 组可能的给药顺序冲突（化疗/营养液安排在抗生素前）`}
+          style={{ marginBottom: 16 }}
+          description={
+            <ul style={{ margin: 0, paddingLeft: 20 }}>
+              {conflicts.map((arr, i) => (
+                <li key={i} style={{ marginTop: 4 }}>
+                  <strong>{arr[0].patient?.name}</strong> - {arr.map((a) => `${zoneMap[a.zoneType]?.label}@${dayjs(a.scheduleTime).format('HH:mm')}`).join(' → ')}
+                </li>
+              ))}
+            </ul>
+          }
+        />
+      )}
+
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        {zones.map((z) => {
+          const zPrescriptions = todayPrescriptions.filter((p) => p.zoneType === z.key);
+          return (
+            <Col span={6} key={z.key}>
+              <Card
+                size="small"
+                title={
+                  <Space>
+                    <Tag color={z.color}>{z.label}</Tag>
+                    <span style={{ fontSize: 12 }}>{zPrescriptions.length} 单</span>
+                  </Space>
+                }
+                style={{ borderTop: `3px solid` }}
+              >
+                {zPrescriptions.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无排程" />
+                ) : (
+                  zPrescriptions.map(renderPrescriptionCard)
+                )}
+              </Card>
+            </Col>
+          );
+        })}
+      </Row>
+
+      <Divider orientation="left"><DesktopOutlined /> 按工位分配队列</Divider>
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        {workstations.map((w) => (
+          <Col span={6} key={w.id}>
+            <Card
+              size="small"
+              title={
+                <Space>
+                  <Tooltip title={zoneMap[w.zoneType]?.label}>
+                    <Tag color={zoneMap[w.zoneType]?.color}>{w.name}</Tag>
+                  </Tooltip>
+                  <span style={{ fontSize: 11, color: '#8c8c8c' }}>
+                    {w.currentStatus === 'idle' ? '空闲' : w.currentStatus === 'occupied' ? '调配中' : w.currentStatus}
+                  </span>
+                </Space>
+              }
+            >
+              {(!prescriptionsByWorkstation[w.id] || prescriptionsByWorkstation[w.id].length === 0) ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="无分配" />
+              ) : (
+                prescriptionsByWorkstation[w.id].map(renderPrescriptionCard)
+              )}
+            </Card>
+          </Col>
+        ))}
+      </Row>
+
+      <Divider orientation="left"><TeamOutlined /> 按人员调配队列</Divider>
+      <Row gutter={16}>
+        {staff.filter((s) => s.isOnDuty && (s.role === 'pharmacist_dispenser' || s.role === 'nurse')).map((s) => (
+          <Col span={6} key={s.id}>
+            <Card
+              size="small"
+              title={
+                <Space>
+                  <Avatar size={24} style={{ background: '#1677ff', fontSize: 12 }}>
+                    {s.name.charAt(0)}
+                  </Avatar>
+                  <span style={{ fontWeight: 600 }}>{s.name}</span>
+                  <Tag color={s.role === 'pharmacist_dispenser' ? 'blue' : 'green'}>
+                    {s.role === 'pharmacist_dispenser' ? '药师' : '护士'}
+                  </Tag>
+                </Space>
+              }
+              extra={<RocketOutlined style={{ color: '#52c41a' }} />}
+            >
+              {(!prescriptionsByStaff[s.id] || prescriptionsByStaff[s.id].length === 0) ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="空闲" />
+              ) : (
+                prescriptionsByStaff[s.id].map(renderPrescriptionCard)
+              )}
+            </Card>
+          </Col>
+        ))}
+      </Row>
     </div>
   );
 };

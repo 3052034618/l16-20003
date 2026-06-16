@@ -20,6 +20,7 @@ import {
   CloseCircleOutlined,
   HeartOutlined,
   HomeOutlined,
+  MonitorOutlined,
 } from '@ant-design/icons';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { useAppStore } from './store/useAppStore';
@@ -31,6 +32,7 @@ import PrescriptionSchedule from './pages/PrescriptionSchedule';
 import ApprovalWorkflow from './pages/ApprovalWorkflow';
 import DeviceMaintenance from './pages/DeviceMaintenance';
 import ProductCheck from './pages/ProductCheck';
+import WorkstationTerminal from './pages/WorkstationTerminal';
 import StatisticsAnalysis from './pages/StatisticsAnalysis';
 import LayoutVisualization from './pages/LayoutVisualization';
 
@@ -130,6 +132,11 @@ const App: React.FC = () => {
       key: '/check',
       icon: <ScanOutlined />,
       label: '成品核对',
+    },
+    {
+      key: '/terminal',
+      icon: <MonitorOutlined />,
+      label: '操作台终端',
     },
     {
       key: '/maintenance',
@@ -359,6 +366,7 @@ const App: React.FC = () => {
             <Route path="/schedule" element={<PrescriptionSchedule />} />
             <Route path="/approval" element={<ApprovalWorkflow />} />
             <Route path="/check" element={<ProductCheck />} />
+            <Route path="/terminal" element={<WorkstationTerminal />} />
             <Route path="/maintenance" element={<DeviceMaintenance />} />
             <Route path="/layout" element={<LayoutVisualization />} />
             <Route path="/statistics" element={<StatisticsAnalysis />} />

@@ -91,7 +91,19 @@ const ProductCheck: React.FC = () => {
     if (checkingPrescriptions.length > 0) {
       const target = checkingPrescriptions[Math.floor(Math.random() * checkingPrescriptions.length)];
       setScanInput(target.barcode);
-      setTimeout(() => handleScan(), 200);
+      setScannedPrescription(target);
+      setCheckStep(0);
+      setScanHistory([
+        {
+          id: Date.now(),
+          prescriptionNo: target.prescriptionNo,
+          patientName: target.patient.name,
+          time: dayjs().format('HH:mm:ss'),
+          status: 'scan',
+        },
+        ...scanHistory,
+      ]);
+      message.success('✅ 模拟扫描成功，已进入五步核对流程');
     } else {
       message.warning('当前没有待核对的处方');
     }

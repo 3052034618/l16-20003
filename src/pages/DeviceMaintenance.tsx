@@ -306,9 +306,15 @@ const DeviceMaintenance: React.FC = () => {
   ];
 
   const handleCreateOrder = (values: any) => {
-    createMaintenanceWorkOrder(currentRecord.id, values.type, values.priority, values.description);
+    const deviceId = values.deviceId || currentRecord?.id;
+    if (!deviceId) {
+      message.warning('请选择关联设备');
+      return;
+    }
+    createMaintenanceWorkOrder(deviceId, values.type, values.priority, values.description || '');
     setCreateOrderModal(false);
     form.resetFields();
+    message.success('维保工单创建成功');
   };
 
   const handleAssign = (values: any) => {
