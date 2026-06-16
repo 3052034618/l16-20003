@@ -143,7 +143,7 @@ export interface Device {
   hepaFilterRemainingHours: number;
   maintenanceHistory: {
     date: string;
-    type: 'routine' | 'repair' | 'filter_replace';
+    type: 'routine' | 'repair' | 'filter_replace' | 'pressure_check';
     description: string;
     operator: string;
   }[];

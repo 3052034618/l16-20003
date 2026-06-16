@@ -372,7 +372,7 @@ const PrescriptionSchedule: React.FC = () => {
           style={{ marginBottom: 16 }}
           message={
             <Space size="large">
-              <span>💡 调度规则：抗生素优先 > 常规用药 > 化疗药延后2小时</span>
+              <span>💡 调度规则：抗生素优先 → 常规用药 → 化疗药延后2小时</span>
               <span>🏥 分区隔离：化疗/营养/抗生素/普通四区独立分配</span>
               <span>⏱️ 超时预警：调配超预计+30分钟自动告警并可重调度</span>
             </Space>
@@ -516,7 +516,7 @@ const PrescriptionSchedule: React.FC = () => {
                 type="warning"
                 showIcon
                 icon={<WarningOutlined />}
-                title="配伍禁忌提示"
+                message="配伍禁忌提示"
                 style={{ marginBottom: 16 }}
                 description={
                   <ul style={{ margin: 0, paddingLeft: 20 }}>

@@ -150,10 +150,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (b.priority === 'emergency') scoreB -= 120 * 60 * 1000;
       if (b.priority === 'urgent') scoreB -= 30 * 60 * 1000;
 
-      const hasAntibioticA = a.items.some((i) => {
-        const drug = state.incompatibilityRules.find();
-        return false;
-      });
+      const hasCatBoostA = a.items.some((i) => ['d001', 'd002', 'd011'].includes(i.drugId));
+      const hasCatBoostB = b.items.some((i) => ['d001', 'd002', 'd011'].includes(i.drugId));
+      if (hasCatBoostA) scoreA -= state.schedulingConfig.antibioticPriorityBoost * 60 * 1000;
+      if (hasCatBoostB) scoreB -= state.schedulingConfig.antibioticPriorityBoost * 60 * 1000;
       const categoriesA = new Set<string>();
       const categoriesB = new Set<string>();
 
@@ -236,7 +236,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           patient: order.patient,
           items: order.items,
           scheduleTime: timeCursor.format('YYYY-MM-DD HH:mm:ss'),
-          expectedDuration,
+          expectedDuration: estimatedDuration,
           zoneType,
           workstationId: workstation?.id || null,
           workstationName: workstation?.name,
@@ -522,17 +522,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
 
-      if (d.pressureDifferential && d.requiredPressureDifferential !== undefined && state.workstations) {
-        const ws = state.workstations.find((w) => w.deviceId === d.id);
-        if (ws && ws.pressureDifferential < ws.requiredPressureDifferential - 2) {
+      state.workstations.forEach((ws) => {
+        if (ws.pressureDifferential < ws.requiredPressureDifferential - 2) {
           const existing = state.maintenanceWorkOrders.find(
-            (wo) => wo.deviceId === d.id && wo.type === 'pressure_check' && (wo.status === 'pending' || wo.status === 'in_progress')
+            (wo) => wo.deviceId === ws.deviceId && wo.type === 'pressure_check' && (wo.status === 'pending' || wo.status === 'in_progress')
           );
           if (!existing) {
-            get().createMaintenanceWorkOrder(d.id, 'pressure_check', 'normal', `洁净区压差异常（当前${ws.pressureDifferential}Pa/要求${ws.requiredPressureDifferential}Pa）`);
+            get().createMaintenanceWorkOrder(ws.deviceId, 'pressure_check', 'normal', `洁净区压差异常（当前${ws.pressureDifferential}Pa/要求${ws.requiredPressureDifferential}Pa）`);
           }
         }
-      }
+      });
     });
   },
 

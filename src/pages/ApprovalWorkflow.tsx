@@ -20,6 +20,8 @@ import {
   Divider,
   Tooltip,
   Alert,
+  Badge,
+  Select,
 } from 'antd';
 import {
   CheckCircleOutlined,
@@ -443,7 +445,7 @@ const ApprovalWorkflow: React.FC = () => {
                 <Space>
                   <FileTextOutlined />
                   医嘱审批
-                  {pendingOrders.length > 0 && <Badge count={pendingOrders.length} />}
+                  {pendingOrders.length > 0 && <Badge count={pendingOrders.length}><span style={{ padding: '0 4px' }} /></Badge>}
                 </Space>
               ),
               children: renderApprovalPanel('医嘱', pendingOrders, approvedOrders, orderColumns, 'orders'),
@@ -665,14 +667,5 @@ const ApprovalWorkflow: React.FC = () => {
     </div>
   );
 };
-
-const Badge = (props: { count: number; children: React.ReactNode }) => (
-  <Space>
-    {props.children}
-    <Tag color="red" style={{ margin: 0, padding: '0 6px' }}>
-      {props.count}
-    </Tag>
-  </Space>
-);
 
 export default ApprovalWorkflow;

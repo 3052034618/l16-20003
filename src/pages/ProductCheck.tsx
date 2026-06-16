@@ -24,6 +24,7 @@ import {
   Progress,
   Tabs,
   Badge,
+  Select,
 } from 'antd';
 import {
   ScanOutlined,
@@ -629,7 +630,5 @@ const ProductCheck: React.FC = () => {
     </div>
   );
 };
-
-const Select = (Select as any);
 
 export default ProductCheck;

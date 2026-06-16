@@ -25,6 +25,8 @@ import {
   Avatar,
   Tooltip,
   Badge,
+  Empty,
+  List,
 } from 'antd';
 import {
   ToolOutlined,
@@ -214,7 +216,7 @@ const DeviceMaintenance: React.FC = () => {
         return <Tag color={map[v]?.color}>{map[v]?.text}</Tag>;
       },
     },
-    { title: '处理人/班组', dataIndex: 'assignedTeamName', width: 100, render: (v) => v || <Tag color="default">待分配</Tag> },
+    { title: '处理人/班组', dataIndex: 'assignedTeamName', width: 100, render: (v: string | undefined) => v || <Tag color="default">待分配</Tag> },
     { title: '预计时间', dataIndex: 'scheduledTime', width: 160 },
     {
       title: '操作',
@@ -255,7 +257,7 @@ const DeviceMaintenance: React.FC = () => {
 
   const partColumns = [
     { title: '备件名称', dataIndex: 'name', width: 180 },
-    { title: '备件编号', dataIndex: 'partNo', width: 150, render: (v) => <span style={{ fontFamily: 'monospace' }}>{v}</span> },
+    { title: '备件编号', dataIndex: 'partNo', width: 150, render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{v}</span> },
     { title: '规格型号', dataIndex: 'specification', width: 180 },
     { title: '单位', dataIndex: 'unit', width: 60 },
     {

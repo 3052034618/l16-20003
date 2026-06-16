@@ -697,13 +697,15 @@ const LayoutVisualization: React.FC = () => {
                               : 'gold'
                           }
                         >
-                          {{
-                            pending_review: '待审核',
-                            reviewed: '已审核',
-                            dispensing: '调配中',
-                            checking: '核对中',
-                            delivered: '已配送',
-                          }[p.status] || p.status}
+                          {(
+                            {
+                              pending_review: '待审核',
+                              reviewed: '已审核',
+                              dispensing: '调配中',
+                              checking: '核对中',
+                              delivered: '已配送',
+                            } as Record<string, string>
+                          )[p.status] || p.status}
                         </Tag>
                       </Col>
                     </Row>

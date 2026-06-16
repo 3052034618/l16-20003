@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Menu, Avatar, Dropdown, Badge, Space, Button, Tooltip, Drawer, List, Tag, Divider } from 'antd';
+import { Layout, Menu, Avatar, Dropdown, Badge, Space, Button, Tooltip, Drawer, List, Tag, Divider, Row, Col, Empty } from 'antd';
 import {
   DashboardOutlined,
   FileTextOutlined,
@@ -332,13 +332,15 @@ const App: React.FC = () => {
                           {currentUser?.name || '用户'}
                         </div>
                         <div style={{ color: '#91caff', fontSize: 10 }}>
-                          {{
-                            pharmacist_reviewer: '审方药师',
-                            pharmacist_dispenser: '调配药师',
-                            nurse: '护士',
-                            director: '药学部主任',
-                            maintenance: '维修工程师',
-                          }[currentUser?.role || '']}
+                          {(
+                            {
+                              pharmacist_reviewer: '审方药师',
+                              pharmacist_dispenser: '调配药师',
+                              nurse: '护士',
+                              director: '药学部主任',
+                              maintenance: '维修工程师',
+                            } as Record<string, string>
+                          )[currentUser?.role || 'pharmacist_reviewer']}
                         </div>
                       </div>
                     )}
@@ -482,19 +484,6 @@ const App: React.FC = () => {
       `}</style>
     </Layout>
   );
-};
-
-const Row = ({ children, ...props }: any) => {
-  return React.createElement('div', { className: `ant-row ant-row-${props.justify || 'start'} ant-row-${props.align || 'top'}`, style: { ...props.style, gap: props.gutter || 0 }, ...props }, children);
-};
-
-const Col = ({ children, ...props }: any) => {
-  let flex = props.flex;
-  let width: string | undefined;
-  if (props.span) {
-    width = `${(props.span / 24) * 100}%`;
-  }
-  return React.createElement('div', { className: `ant-col-${props.span || 24}`, style: { flex, width, ...props.style } }, children);
 };
 
 export default App;
